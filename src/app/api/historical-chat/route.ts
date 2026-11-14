@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+import { generateGeminiContent } from '@/lib/gemini-pool';
 
 interface HistoricalChatBody {
   figureId: string;
@@ -97,7 +98,12 @@ function cleanAsterisks(text: string): string {
     .replace(/\*/g, '');
 }
 
-// 1. Groq
+// 1. Gemini (Multi-Key Pool Failover)
+async function callGemini(systemPrompt: string, userMessage: string): Promise<string> {
+  return await generateGeminiContent(systemPrompt, [{ role: 'user', content: userMessage }], 0.75, 512);
+}
+
+// 2. Groq
 async function callGroq(systemPrompt: string, userMessage: string): Promise<string> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error('GROQ_API_KEY not set');
@@ -124,7 +130,7 @@ async function callGroq(systemPrompt: string, userMessage: string): Promise<stri
   return cleanAsterisks(data.choices?.[0]?.message?.content || '');
 }
 
-// 2. DeepSeek
+// 3. DeepSeek
 async function callDeepSeek(systemPrompt: string, userMessage: string): Promise<string> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY not set');
@@ -151,29 +157,6 @@ async function callDeepSeek(systemPrompt: string, userMessage: string): Promise<
   return cleanAsterisks(data.choices?.[0]?.message?.content || '');
 }
 
-// 3. Gemini
-async function callGemini(systemPrompt: string, userMessage: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-        generationConfig: { maxOutputTokens: 512, temperature: 0.75 },
-      }),
-    }
-  );
-
-  if (!response.ok) throw new Error(`Gemini error: ${response.status}`);
-  const data = await response.json();
-  return cleanAsterisks(data.candidates?.[0]?.content?.parts?.[0]?.text || '');
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body: HistoricalChatBody = await request.json();
@@ -190,18 +173,21 @@ export async function POST(request: NextRequest) {
 
     const systemPrompt = `${persona.prompt}\n\nFoydalanuvchi ismi: ${userName}, yoshi: ${userAge}.`;
 
-    // Try AI providers with fallback chain
+    // Try AI providers with fallback chain: 1. Gemini Multi-Key Pool -> 2. Groq -> 3. DeepSeek
     let reply: string;
 
     try {
-      reply = await callGroq(systemPrompt, message);
-    } catch {
+      reply = await callGemini(systemPrompt, message);
+    } catch (geminiErr) {
+      console.warn('[Historical Chat] Gemini pool failed, trying Groq:', geminiErr);
       try {
-        reply = await callDeepSeek(systemPrompt, message);
-      } catch {
+        reply = await callGroq(systemPrompt, message);
+      } catch (groqErr) {
+        console.warn('[Historical Chat] Groq failed, trying DeepSeek:', groqErr);
         try {
-          reply = await callGemini(systemPrompt, message);
-        } catch {
+          reply = await callDeepSeek(systemPrompt, message);
+        } catch (deepseekErr) {
+          console.warn('[Historical Chat] All providers failed, using persona fallback:', deepseekErr);
           reply = `Assalomu alaykum ${userName}! Men ${persona.name}man. Bergan savolingiz juda o'rinli — ilm, adolat va tarbiya yo'lida sobitqadam bo'lsangiz, barcha maqsadlaringizga erishasiz!`;
         }
       }

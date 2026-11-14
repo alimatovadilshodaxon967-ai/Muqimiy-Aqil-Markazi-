@@ -58,8 +58,8 @@ export default function StartScreen() {
   ];
 
   const stats = [
-    { value: 5000, suffix: '+', label: 'Foydalanuvchi', icon: Users },
-    { value: 5, suffix: '', label: "Yo'nalish", icon: Compass },
+    { value: 0, suffix: '', label: 'Foydalanuvchi', icon: Users },
+    { value: 6, suffix: '', label: "Yo'nalish", icon: Compass },
     { value: 3, suffix: '', label: 'Tilda Xizmat', icon: Globe },
     { value: 24, suffix: '/7', label: 'AI Yordamchi', icon: Bot },
   ];

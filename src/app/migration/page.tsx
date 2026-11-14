@@ -10,6 +10,7 @@ import { getTranslation } from '@/lib/translations';
 import { Compass, ExternalLink, Bot, Volume2, Mic, MicOff, Loader2, Sparkles, PhoneCall, PhoneOff } from 'lucide-react';
 import { RealisticVideoAvatar } from '@/components/avatar/RealisticVideoAvatar';
 import { generateAIResponse, AIMessage } from '@/lib/ai/aiService';
+import { detectNavigationIntent } from '@/lib/avatar/avatarNavigation';
 
 export default function MigrationHubScreen() {
   const router = useRouter();
@@ -20,11 +21,12 @@ export default function MigrationHubScreen() {
   const userName = user?.name ? user.name.replace(/[0-9]/g, '').trim() : 'Farhodjon';
 
   // AI Avatar & Voice states
-  const [avatarState, setAvatarState] = useState<'greeting' | 'idle'>('greeting');
+  const [avatarState, setAvatarState] = useState<'greeting' | 'idle' | 'speaking' | 'listening' | 'thinking'>('idle');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [liveVoiceActive, setLiveVoiceActive] = useState(false);
+  const [didText, setDidText] = useState<string>('');
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const speechAbortRef = useRef<boolean>(false);
@@ -67,6 +69,8 @@ export default function MigrationHubScreen() {
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*/g, '')
       .trim();
+
+    setDidText(cleanText);
 
     try {
       const controller = new AbortController();
@@ -169,6 +173,21 @@ export default function MigrationHubScreen() {
   // Process User Voice Query
   const handleUserVoiceQuery = async (queryText: string) => {
     if (!queryText.trim()) return;
+
+    // Boshqa bo'limga o'tish yoki bosh sahifaga qaytish buyrug'i tekshiruvi
+    const navMatch = detectNavigationIntent(queryText);
+    if (navMatch && navMatch.targetRoute !== '/migration') {
+      setIsThinking(false);
+      setIsListening(false);
+      setLiveVoiceActive(false);
+      speakText(navMatch.confirmationSpeech, false, false);
+      setTimeout(() => {
+        stopSpeaking();
+        router.push(navMatch.targetRoute);
+      }, 1500);
+      return;
+    }
+
     setIsThinking(true);
     setIsListening(false);
 
@@ -259,7 +278,7 @@ Foydalanuvchining viza, ish va xavfsiz migratsiya haqidagi savoliga o'zbek tilid
   useEffect(() => {
     const welcomeSpeech = `Assalomu alaykum, ${userName}! Xavfsiz va qonuniy migratsiya bo‘limiga xush kelibsiz! O‘ng tomondan kerakli davlatni tanlang yoki mikrofondan savol bering, men sizga barcha viza va ish talablarini tushuntirib beraman.`;
     const timer = setTimeout(() => {
-      speakText(welcomeSpeech, true, false);
+      // Silent on mount until asked
     }, 400);
     return () => {
       clearTimeout(timer);
@@ -299,7 +318,7 @@ Foydalanuvchining viza, ish va xavfsiz migratsiya haqidagi savoliga o'zbek tilid
           <div className="lg:col-span-6 flex flex-col items-center justify-center space-y-4">
             
             {/* Grand Kiosk Avatar Screen */}
-            <div className="w-full max-w-[560px] h-[520px] sm:h-[580px] lg:h-[640px] xl:h-[670px] relative">
+            <div className="w-full max-w-[440px] sm:max-w-[460px] h-[520px] sm:h-[580px] lg:h-[620px] xl:h-[650px] relative">
               <RealisticVideoAvatar
                 state={
                   isSpeaking
@@ -310,9 +329,10 @@ Foydalanuvchining viza, ish va xavfsiz migratsiya haqidagi savoliga o'zbek tilid
                     ? 'thinking'
                     : 'idle'
                 }
-                onGreetingEnd={() => setAvatarState('idle')}
                 rounded="rounded-[36px]"
                 showAura={true}
+                fit="cover"
+                position="center 18%"
                 className="w-full h-full"
               />
 
@@ -321,7 +341,7 @@ Foydalanuvchining viza, ish va xavfsiz migratsiya haqidagi savoliga o'zbek tilid
                 {isSpeaking ? (
                   <div className="bg-emerald-600/95 text-white px-4 py-1 rounded-full flex items-center gap-2 animate-pulse shadow-md border border-emerald-400/40">
                     <Volume2 className="w-4 h-4 text-white" />
-                    <span>Mohira tushuntirmoqda...</span>
+                    <span>Migratsiya AI maslahat bermoqda...</span>
                   </div>
                 ) : isListening ? (
                   <div className="bg-rose-600/95 text-white px-4 py-1.5 rounded-full flex items-center gap-2 animate-pulse shadow-md border border-rose-400/40">
@@ -331,19 +351,19 @@ Foydalanuvchining viza, ish va xavfsiz migratsiya haqidagi savoliga o'zbek tilid
                 ) : isThinking ? (
                   <div className="bg-amber-600/95 text-white px-4 py-1.5 rounded-full flex items-center gap-2 shadow-md border border-amber-400/40">
                     <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>Mohira javob tayyorlamoqda...</span>
+                    <span>Migratsiya AI tahlil qilmoqda...</span>
                   </div>
                 ) : (
                   <div className="bg-white/95 text-[#0F766E] px-4 py-1.5 rounded-full flex items-center gap-2 border border-[#EAE6DF] shadow-md">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="font-bold">Mohira AI • Ovozli muloqot</span>
+                    <span className="font-bold">Migratsiya AI • Xalqaro maslahatchi</span>
                   </div>
                 )}
               </div>
             </div>
 
             {/* Direct Voice Interaction Controls */}
-            <div className="w-full max-w-[560px] flex items-center justify-center gap-3">
+            <div className="w-full max-w-[440px] sm:max-w-[460px] flex items-center justify-center gap-3">
               <button
                 onClick={toggleLiveVoice}
                 className={`flex-1 py-3.5 px-6 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-md active:scale-95 ${

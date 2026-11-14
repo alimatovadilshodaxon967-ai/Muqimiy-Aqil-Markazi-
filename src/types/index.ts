@@ -87,6 +87,7 @@ export interface HistoricalTopic {
   icon: string;
   question: string;
   speechText: string;
+  audioFile?: string;
 }
 
 export interface HistoricalFigure {
@@ -104,6 +105,7 @@ export interface HistoricalFigure {
   accentBg: string;
   accentBorder: string;
   greetingSpeech: string;
+  greetingAudioFile?: string;
   topics: HistoricalTopic[];
 }
 

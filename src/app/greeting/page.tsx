@@ -140,17 +140,23 @@ export default function PersonalizedGreetingScreen() {
       <main className="flex-1 flex flex-col items-center justify-center max-w-xl mx-auto w-full my-auto text-center px-4 py-6 relative z-10">
         <div className="bg-white/95 backdrop-blur-xl p-8 sm:p-10 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.08)] border border-[#EAE6DF] w-full flex flex-col items-center animate-fade-in-scale">
           
-          {/* Realistic Video Avatar in Greeting State (Hand on chest) */}
-          <div className="relative mb-6">
-            <RealisticVideoAvatar
-              state={avatarState}
-              size={240}
-              onGreetingEnd={() => setAvatarState('idle')}
-              showAura={true}
-            />
+          {/* Realistic Video Avatar in Greeting State */}
+          <div className="relative mb-6 w-56 h-72 sm:w-64 sm:h-80">
+              <RealisticVideoAvatar
+                state={
+                  isPlaying
+                    ? (avatarState === 'greeting' ? 'greeting' : 'speaking')
+                    : 'idle'
+                }
+                rounded="rounded-[36px]"
+                showAura={true}
+                fit="cover"
+                position="center 18%"
+                className="w-full h-full"
+              />
             <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-emerald-700 text-white text-xs font-black px-4 py-1 rounded-full shadow-md flex items-center gap-1.5 whitespace-nowrap">
               <Volume2 className={`w-3.5 h-3.5 ${isPlaying ? 'animate-pulse' : ''}`} />
-              <span>{isPlaying ? 'Mohira AI • Salomlashmoqda' : 'Mohira AI • Ovozli yordamchi'}</span>
+              <span>{isPlaying ? 'Muqimiy AI • Salomlashmoqda' : 'Muqimiy AI • Ovozli yordamchi'}</span>
             </div>
           </div>
 

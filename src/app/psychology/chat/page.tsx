@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useKiosk } from '@/context/KioskContext';
 import { KioskHeader } from '@/components/ui/KioskHeader';
 import { generateAIResponse, AIMessage } from '@/lib/ai/aiService';
+import { RealisticVideoAvatar } from '@/components/avatar/RealisticVideoAvatar';
 import { 
   HeartHandshake, Send, Bot, User, ShieldAlert, 
   Play, Pause, Volume2, Sparkles, Wind, 
@@ -26,7 +27,40 @@ interface HzRelaxTrack {
 }
 
 const HZ_HEALING_TRACKS: HzRelaxTrack[] = [
-  // 1. Yuqori Stress & Xavotir (1111 Hz, 963 Hz, 852 Hz, Alpha)
+  // 1. Oliy Chastotali Miyani Tozalash & Tinnitus Relief (9000 Hz, 10000 Hz, 40000 Hz, 1111 Hz, 963 Hz)
+  {
+    id: 'hz-9000',
+    hz: '9,000 Hz',
+    videoId: '7KUu8XL1JqQ',
+    title: '9000 Hz High Ringing Tinnitus Relief',
+    category: 'high',
+    categoryLabel: 'Miyani Tozalash & Tinnitus Relief',
+    icon: '〰️',
+    description: '9000 Hz Oliy to‘lqinli ringing. Miyadagi shovqin, charchoq va bosh og‘rig‘ini yuvib tashlaydi.',
+    effect: 'Miyadagi shovqinni o‘chirish va to‘liq tinchlanish',
+  },
+  {
+    id: 'hz-10000',
+    hz: '10,000 Hz',
+    videoId: '-Paw9T7zf6s',
+    title: '10,000 Hz Pineal Gland Brain Reset',
+    category: 'high',
+    categoryLabel: 'Miyani Tozalash & Tinnitus Relief',
+    icon: '🧠',
+    description: '10,000 Hz Epifiz bezi va fikrlar to‘plamini to‘liq reset qiluvchi sof chastota.',
+    effect: 'Miyani salbiy fikrlardan tozalash va to‘liq reset',
+  },
+  {
+    id: 'hz-40000',
+    hz: '40,000 Hz',
+    videoId: 'ZkD5EJc-ZeM',
+    title: '40,000 Hz Gamma Wave Brain Fog Reset',
+    category: 'high',
+    categoryLabel: 'Miyani Tozalash & Tinnitus Relief',
+    icon: '⚡',
+    description: '40,000 Hz Gamma to‘lqinlari orqali miyadagi tumanli holat (Brain Fog) va aqliy toliqishni bartaraf etish.',
+    effect: 'Ongni tiniqlashtirish va aqliy toliqishni quvish',
+  },
   {
     id: 'hz-1111',
     hz: '1111 Hz',
@@ -275,6 +309,7 @@ function PsychologyChatContent() {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [avatarState, setAvatarState] = useState<'idle' | 'speaking' | 'listening' | 'thinking'>('idle');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -413,13 +448,14 @@ function PsychologyChatContent() {
       .trim();
 
     try {
+      setAvatarState('speaking');
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: cleanText,
-          figureId: 'mohira',
-          voice: 'uz-UZ-MadinaNeural',
+          figureId: 'psychologist',
+          voice: 'uz-UZ-SardorNeural',
           rate: '+0%',
           pitch: '+0Hz',
         }),
@@ -432,10 +468,24 @@ function PsychologyChatContent() {
           }
           const audio = new Audio(data.audioBase64);
           audioPlayerRef.current = audio;
-          audio.play().catch(() => {});
+          audio.onended = () => {
+            setAvatarState('idle');
+            audioPlayerRef.current = null;
+          };
+          audio.onerror = () => {
+            setAvatarState('idle');
+            audioPlayerRef.current = null;
+          };
+          audio.play().catch(() => {
+            setAvatarState('idle');
+          });
+          return;
         }
       }
-    } catch {}
+      setAvatarState('idle');
+    } catch {
+      setAvatarState('idle');
+    }
   };
 
   // Send message
@@ -451,12 +501,13 @@ function PsychologyChatContent() {
     setMessages(newHistory);
     setInput('');
     setIsTyping(true);
+    setAvatarState('thinking');
 
     try {
       const aiPrompt: AIMessage[] = [
         {
           role: 'system',
-          content: `Sen "Muqimiy Aql Markazi" psixologik ko'mak markazining tajribali, muloyim va dildosh virtual psixologi Mohirasan.
+          content: `Sen "Muqimiy Aql Markazi" psixologik ko'mak markazining tajribali, muloyim, dildosh va professional virtual psixolog-maslahatchisisan.
 Foydalanuvchi ismi: ${userName}.
 Mavzu: "${topicParam}".
 Foydalanuvchining aniqlangan ruhiy holat darajasi: "${activeTrack.categoryLabel}".
@@ -485,6 +536,7 @@ Vazifang:
           content: `Kechirasiz, ${userName}. Aloqada biroz uzilish bo‘ldi. Iltimos yana bir bor fikringizni bildiring, sizni tinglashga tayyorman.`,
         },
       ]);
+      setAvatarState('idle');
     } finally {
       setIsTyping(false);
     }
@@ -498,6 +550,7 @@ Vazifang:
         recognitionRef.current = null;
       }
       setIsListening(false);
+      setAvatarState('idle');
       return;
     }
 
@@ -513,7 +566,10 @@ Vazifang:
       recognition.interimResults = false;
       recognition.continuous = false;
 
-      recognition.onstart = () => setIsListening(true);
+      recognition.onstart = () => {
+        setIsListening(true);
+        setAvatarState('listening');
+      };
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         if (transcript) {
@@ -522,10 +578,12 @@ Vazifang:
       };
       recognition.onend = () => {
         setIsListening(false);
+        setAvatarState('idle');
         recognitionRef.current = null;
       };
       recognition.onerror = () => {
         setIsListening(false);
+        setAvatarState('idle');
         recognitionRef.current = null;
       };
 
@@ -533,6 +591,7 @@ Vazifang:
       recognition.start();
     } catch {
       setIsListening(false);
+      setAvatarState('idle');
     }
   };
 
@@ -863,95 +922,159 @@ Vazifang:
           </div>
         ) : (
           /* ════════════════════════════════════════════════════════════
-               STEP 2: CLEAN MINIMALIST DIALOGUE CHATROOM
+               STEP 2: CLEAN MINIMALIST DIALOGUE CHATROOM + LIVE AVATAR
              ════════════════════════════════════════════════════════════ */
-          <div className="flex-1 bg-white rounded-3xl border border-[#EAE6DF] shadow-sm flex flex-col overflow-hidden min-h-0 animate-fade-in">
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0 overflow-hidden animate-fade-in">
             
-            {/* MESSAGES SCROLL LIST */}
-            <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-4">
-              {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`flex gap-3 items-end ${
-                    msg.role === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
-                >
-                  {msg.role === 'assistant' && (
-                    <div className="w-10 h-10 bg-teal-50 border border-teal-200 rounded-2xl flex items-center justify-center text-[#0F766E] shrink-0 shadow-2xs">
-                      <HeartHandshake className="w-5 h-5" />
-                    </div>
-                  )}
-
+            {/* LEFT: CHAT MESSAGES & INPUT (7 cols on lg) */}
+            <div className="lg:col-span-7 bg-white rounded-3xl border border-[#EAE6DF] shadow-sm flex flex-col overflow-hidden min-h-0">
+              
+              {/* MESSAGES SCROLL LIST */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                {messages.map((msg, index) => (
                   <div
-                    className={`max-w-[80%] px-5 py-3.5 rounded-2xl text-sm sm:text-base leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-teal-700 text-white rounded-br-xs font-semibold shadow-xs'
-                        : 'bg-[#FAF8F5] border border-[#EAE6DF] text-[#1C1917] rounded-bl-xs font-medium whitespace-pre-line shadow-2xs'
+                    key={index}
+                    className={`flex gap-3 items-end ${
+                      msg.role === 'user' ? 'justify-end' : 'justify-start'
                     }`}
                   >
-                    {msg.content}
-                  </div>
+                    {msg.role === 'assistant' && (
+                      <div className="w-10 h-10 bg-teal-50 border border-teal-200 rounded-2xl flex items-center justify-center text-[#0F766E] shrink-0 shadow-2xs">
+                        <HeartHandshake className="w-5 h-5" />
+                      </div>
+                    )}
 
-                  {msg.role === 'user' && (
-                    <div className="w-10 h-10 bg-[#1C1917] rounded-2xl flex items-center justify-center text-white shrink-0 font-bold text-xs shadow-2xs">
-                      <User className="w-4 h-4" />
+                    <div
+                      className={`max-w-[82%] px-4 sm:px-5 py-3 rounded-2xl text-sm sm:text-base leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-teal-700 text-white rounded-br-xs font-semibold shadow-xs'
+                          : 'bg-[#FAF8F5] border border-[#EAE6DF] text-[#1C1917] rounded-bl-xs font-medium whitespace-pre-line shadow-2xs'
+                      }`}
+                    >
+                      {msg.content}
+                    </div>
+
+                    {msg.role === 'user' && (
+                      <div className="w-10 h-10 bg-[#1C1917] rounded-2xl flex items-center justify-center text-white shrink-0 font-bold text-xs shadow-2xs">
+                        <User className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {isTyping && (
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 bg-teal-50 border border-teal-200 rounded-2xl flex items-center justify-center text-[#0F766E] shrink-0">
+                      <Bot className="w-5 h-5 animate-spin" />
+                    </div>
+                    <div className="px-4 py-2.5 bg-[#FAF8F5] rounded-2xl border border-[#EAE6DF] text-xs text-[#78716C] font-semibold flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-teal-500 animate-ping" />
+                      <span>AI Psixolog javob tayyorlamoqda...</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* INPUT BAR WITH VOICE & SEND */}
+              <div className="p-3 sm:p-4 bg-white border-t border-[#EAE6DF] flex gap-2.5 items-center shrink-0">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="Dilingizdagi fikr yoki xavotirni yozing..."
+                  className="flex-1 min-h-[48px] max-h-[100px] px-4 py-3 border border-[#EAE6DF] focus:border-teal-600 rounded-2xl text-sm font-medium text-[#1C1917] outline-none resize-none bg-[#FAF8F5]"
+                  rows={1}
+                />
+
+                {/* Voice Mic Button */}
+                <button
+                  onClick={toggleListening}
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-xs active:scale-95 ${
+                    isListening
+                      ? 'bg-rose-500 text-white ring-4 ring-rose-200 animate-pulse'
+                      : 'bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100'
+                  }`}
+                  title={isListening ? "To'xtatish" : "Ovozli gapirish"}
+                >
+                  {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                </button>
+
+                {/* Send Button */}
+                <button
+                  onClick={() => handleSend()}
+                  className="w-12 h-12 rounded-2xl bg-teal-700 hover:bg-teal-800 active:scale-95 text-white flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-md"
+                  title="Yuborish"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* RIGHT: REALISTIC VIDEO AVATAR & QUICK CALM PANEL (5 cols on lg) */}
+            <div className="lg:col-span-5 flex flex-col gap-3 min-h-0">
+              
+              {/* Grand Video Avatar Screen */}
+              <div className="flex-1 min-h-[300px] sm:min-h-[380px] relative bg-stone-900 rounded-3xl overflow-hidden shadow-lg border border-[#EAE6DF]">
+                <RealisticVideoAvatar
+                  state={avatarState}
+                  rounded="rounded-3xl"
+                  showAura={true}
+                  className="w-full h-full"
+                />
+
+                {/* Avatar Live Status Pill */}
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md z-40 whitespace-nowrap shadow-md">
+                  {avatarState === 'speaking' ? (
+                    <div className="bg-emerald-600/90 text-white px-3 py-1 rounded-full flex items-center gap-1.5 animate-pulse">
+                      <Volume2 className="w-3.5 h-3.5" />
+                      <span>Maslahat bermoqda...</span>
+                    </div>
+                  ) : avatarState === 'listening' ? (
+                    <div className="bg-rose-600/90 text-white px-3 py-1 rounded-full flex items-center gap-1.5 animate-pulse">
+                      <Mic className="w-3.5 h-3.5" />
+                      <span>Sizni eshitmoqda...</span>
+                    </div>
+                  ) : avatarState === 'thinking' ? (
+                    <div className="bg-amber-600/90 text-white px-3 py-1 rounded-full flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                      <span>O'ylamoqda...</span>
+                    </div>
+                  ) : (
+                    <div className="bg-black/60 text-white px-3 py-1 rounded-full flex items-center gap-1.5 border border-white/20">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      <span>Muqimiy AI Psixolog</span>
                     </div>
                   )}
                 </div>
-              ))}
+              </div>
 
-              {isTyping && (
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 bg-teal-50 border border-teal-200 rounded-2xl flex items-center justify-center text-[#0F766E] shrink-0">
-                    <Bot className="w-5 h-5 animate-spin" />
-                  </div>
-                  <div className="px-4 py-2.5 bg-[#FAF8F5] rounded-2xl border border-[#EAE6DF] text-xs text-[#78716C] font-semibold flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-teal-500 animate-ping" />
-                    <span>Mohira javob tayyorlamoqda...</span>
+              {/* Soothing Mini Controls under Avatar */}
+              <div className="bg-white rounded-2xl p-3 border border-[#EAE6DF] shadow-xs flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <span className="text-xl shrink-0">{activeTrack.icon}</span>
+                  <div className="truncate">
+                    <span className="text-[11px] font-black text-teal-700 block truncate">{activeTrack.hz} • {activeTrack.title}</span>
+                    <span className="text-[10px] text-gray-500 font-medium truncate">{activeTrack.effect}</span>
                   </div>
                 </div>
-              )}
-              <div ref={messagesEndRef} />
+
+                <button
+                  onClick={() => setIsMusicPlaying(prev => !prev)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition-all cursor-pointer ${
+                    isMusicPlaying ? 'bg-red-500 text-white' : 'bg-emerald-600 text-white'
+                  }`}
+                >
+                  {isMusicPlaying ? 'Tanaffus' : 'Musiqa ▶'}
+                </button>
+              </div>
             </div>
 
-            {/* INPUT BAR WITH VOICE & SEND */}
-            <div className="p-3 sm:p-4 bg-white border-t border-[#EAE6DF] flex gap-2.5 items-center shrink-0">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Dilingizdagi fikr yoki xavotirni yozing..."
-                className="flex-1 min-h-[48px] max-h-[100px] px-4 py-3 border border-[#EAE6DF] focus:border-teal-600 rounded-2xl text-sm font-medium text-[#1C1917] outline-none resize-none bg-[#FAF8F5]"
-                rows={1}
-              />
-
-              {/* Voice Mic Button */}
-              <button
-                onClick={toggleListening}
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-xs active:scale-95 ${
-                  isListening
-                    ? 'bg-rose-500 text-white ring-4 ring-rose-200 animate-pulse'
-                    : 'bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100'
-                }`}
-                title={isListening ? "To'xtatish" : "Ovozli gapirish"}
-              >
-                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </button>
-
-              {/* Send Button */}
-              <button
-                onClick={() => handleSend()}
-                className="w-12 h-12 rounded-2xl bg-teal-700 hover:bg-teal-800 active:scale-95 text-white flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-md"
-                title="Yuborish"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
           </div>
         )}
 

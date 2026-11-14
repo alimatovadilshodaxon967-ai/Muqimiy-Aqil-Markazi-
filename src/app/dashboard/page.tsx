@@ -14,6 +14,7 @@ import { trackDirectionClick } from '@/lib/firebase/db';
 import { generateAIResponse, AIMessage } from '@/lib/ai/aiService';
 import { AIAvatar } from '@/components/ui/AIAvatar';
 import { RealisticVideoAvatar } from '@/components/avatar/RealisticVideoAvatar';
+import { detectNavigationIntent } from '@/lib/avatar/avatarNavigation';
 
 interface DirectionCard {
   id: string;
@@ -38,7 +39,7 @@ export default function MainDashboardScreen() {
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Direct Voice States
-  const [avatarState, setAvatarState] = useState<'greeting' | 'idle'>('greeting');
+  const [avatarState, setAvatarState] = useState<'greeting' | 'idle'>('idle');
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -80,10 +81,10 @@ export default function MainDashboardScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: cleanText,
-          figureId: 'mohira',
-          voice: 'uz-UZ-MadinaNeural',
-          rate: '+2%',
-          pitch: '+1Hz',
+          figureId: 'muqimiy',
+          voice: 'uz-UZ-SardorNeural',
+          rate: '+0%',
+          pitch: '+0Hz',
         }),
         signal: controller.signal,
       });
@@ -153,15 +154,14 @@ export default function MainDashboardScreen() {
     const utterance = new SpeechSynthesisUtterance(cleanText);
 
     const voices = window.speechSynthesis.getVoices();
-    const uzVoice = voices.find(v => v.lang.startsWith('uz'))
+    const uzVoice = voices.find(v => v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('sardor') || v.name.toLowerCase().includes('david'))
+      || voices.find(v => v.lang.startsWith('uz'))
       || voices.find(v => v.lang.startsWith('tr'))
-      || voices.find(v => v.lang.startsWith('ru'))
-      || voices.find(v => v.name.toLowerCase().includes('female'))
       || voices[0];
 
     if (uzVoice) utterance.voice = uzVoice;
     utterance.rate = 0.95;
-    utterance.pitch = 1.08;
+    utterance.pitch = 0.95;
     utterance.volume = 1;
 
     utterance.onstart = () => {
@@ -207,10 +207,15 @@ export default function MainDashboardScreen() {
       }
 
       const recognition = new SpeechRecognition();
-      recognition.lang = 'uz-UZ';
+      // uz-UZ Chrome Web Speech API'da qo'llab-quvvatlanmaydi,
+      // shuning uchun eng yaqin tillardan foydalanamiz
+      const langPriority = ['uz-UZ', 'tr-TR', 'ru-RU', 'en-US'];
+      recognition.lang = langPriority[0]; // Birinchi uz-UZ sinab ko'ramiz
       recognition.interimResults = true;
       recognition.continuous = false;
-      recognition.maxAlternatives = 1;
+      recognition.maxAlternatives = 3;
+
+      let langFallbackIndex = 0;
 
       latestTranscriptRef.current = '';
 
@@ -246,6 +251,36 @@ export default function MainDashboardScreen() {
 
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
+        
+        // Agar "language-not-supported" bo'lsa, keyingi tilga o'tamiz
+        if (event.error === 'language-not-supported' || event.error === 'not-allowed') {
+          langFallbackIndex++;
+          if (langFallbackIndex < langPriority.length) {
+            console.log(`Tilni o'zgartirmoqda: ${langPriority[langFallbackIndex]}`);
+            setTimeout(() => {
+              if (liveVoiceActiveRef.current || isListening) {
+                try {
+                  const retryRecognition = new SpeechRecognition();
+                  retryRecognition.lang = langPriority[langFallbackIndex];
+                  retryRecognition.interimResults = true;
+                  retryRecognition.continuous = false;
+                  retryRecognition.maxAlternatives = 3;
+                  retryRecognition.onstart = recognition.onstart;
+                  retryRecognition.onresult = recognition.onresult;
+                  retryRecognition.onend = recognition.onend;
+                  retryRecognition.onerror = recognition.onerror;
+                  recognitionRef.current = retryRecognition;
+                  retryRecognition.start();
+                } catch (e2) {
+                  console.warn('Fallback speech recognition failed:', e2);
+                  setIsListening(false);
+                }
+              }
+            }, 300);
+            return;
+          }
+        }
+
         setIsListening(false);
         recognitionRef.current = null;
         if (event.error === 'no-speech' && liveVoiceActiveRef.current) {
@@ -334,45 +369,97 @@ export default function MainDashboardScreen() {
     setIsThinking(true);
     setLastUserSpeech(userText);
 
-    // Smart voice-based direction focus
-    const lowerUser = userText.toLowerCase();
-    if (lowerUser.includes('til') || lowerUser.includes('ingliz') || lowerUser.includes('rus') || lowerUser.includes('nemis') || lowerUser.includes('xitoy') || lowerUser.includes('ibrat')) {
-      setActiveIndex(0);
-    } else if (lowerUser.includes('kasb') || lowerUser.includes('dastur') || lowerUser.includes('it') || lowerUser.includes('kurs') || lowerUser.includes('ustoz') || lowerUser.includes('smm') || lowerUser.includes('grafik')) {
-      setActiveIndex(1);
-    } else if (lowerUser.includes('migrats') || lowerUser.includes('viza') || lowerUser.includes('xorij') || lowerUser.includes('chet el') || lowerUser.includes('pasport') || lowerUser.includes('ish')) {
-      setActiveIndex(2);
-    } else if (lowerUser.includes('psixolog') || lowerUser.includes('stress') || lowerUser.includes('test') || lowerUser.includes('maslahat') || lowerUser.includes('yordam') || lowerUser.includes('kayfiyat')) {
-      setActiveIndex(3);
-    } else if (lowerUser.includes('ai') || lowerUser.includes("sun'iy") || lowerUser.includes('bot') || lowerUser.includes('texnologiya') || lowerUser.includes('intellekt')) {
-      setActiveIndex(4);
-    } else if (lowerUser.includes('tarix') || lowerUser.includes('temur') || lowerUser.includes('navoiy') || lowerUser.includes('ulug') || lowerUser.includes('jadid') || lowerUser.includes('shaxs') || lowerUser.includes('behbudiy') || lowerUser.includes('avloniy') || lowerUser.includes('bobur')) {
-      setActiveIndex(5);
-    }
+    // ── 0. OVOZLI NAVIGATSIYA: Istalgan bo'limga to'g'ridan-to'g'ri kirish ──
+    const navMatch = detectNavigationIntent(userText, activeIndex);
+    if (navMatch) {
+      setActiveIndex(navMatch.activeIndex);
+      const reply = navMatch.confirmationSpeech;
 
-    try {
-      const newHistory: AIMessage[] = [
-        ...conversationHistory,
-        { role: 'user', content: userText }
-      ];
+      // Ovozli tinglash rejimini to'xtatamiz
+      stopDirectListening();
+      setLiveVoiceActive(false);
 
-      const aiMessages: AIMessage[] = [
-        {
-          role: 'system',
-          content: `Sen "Muqimiy Aql Markazi" kiosk platformasining virtual yo'lboshchisisan. Isming Mohira. Foydalanuvchi (${userName}, ${userAge} yosh) bilan bevosita OVOZLI MULOQOT qilmoqdasan. Javoblaringni sof, samimiy, jozibali va chiroyli O'ZBEK TILIDA juda qisqa (1-2 ta jumla) qilib ber. Hech qanday yulduzcha (*) yoki (**) belgilarini ishlatma. Faqat og'zaki nutqqa mos, yoqimli va tushunarli javob ber.`,
-        },
-        ...newHistory,
-      ];
-
-      const reply = await generateAIResponse(aiMessages, user, 'general');
-      if (speechAbortRef.current) { setIsThinking(false); return; }
-
-      setConversationHistory([
-        ...newHistory,
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', content: userText },
         { role: 'assistant', content: reply }
       ]);
       setCurrentSpeechText(reply);
-      speakMohira(reply, true);
+      speakMohira(reply, false);
+
+      // Avatar javobini boshlagach, yangi bo'lim sahifasiga o'tamiz
+      setTimeout(() => {
+        stopSpeaking();
+        router.push(navMatch.targetRoute);
+      }, 1500);
+
+      setIsThinking(false);
+      return;
+    }
+
+    const lowerUser = userText.toLowerCase();
+    let directReply: string | null = null;
+
+    // 0. Barcha yo'nalishlar haqida so'ralganda (Ketma-ketlikda tushuntirish)
+    const isAskingAllDirections = 
+      (lowerUser.includes('yonalish') || lowerUser.includes("yo'nalish") || lowerUser.includes('yunalish') || lowerUser.includes('bolim') || lowerUser.includes("bo'lim") || lowerUser.includes('tizim') || lowerUser.includes('platforma') || lowerUser.includes('imkoniyat')) &&
+      (lowerUser.includes('qanday') || lowerUser.includes('nimalar') || lowerUser.includes('qanaqa') || lowerUser.includes('tushuntir') || lowerUser.includes('aytib ber') || lowerUser.includes('haqida') || lowerUser.includes('bor') || lowerUser.includes('qaysi') || lowerUser.includes('mavjud'));
+
+    if (isAskingAllDirections || lowerUser.includes('barcha yo') || lowerUser.includes('hamma yo') || lowerUser.includes('nimalar qilsa') || lowerUser.includes('nima bor')) {
+      setActiveIndex(0);
+      directReply = `Muqimiy platformamizda jami 6 ta asosiy yo'nalish mavjud: Birinchisi — Til o'rganish, Ibrat Farzandlari orqali ingliz, rus, xitoy va nemis tillari. Ikkinchisi — Zamonaviy kasb o'rganish, Ustoz AI orqali dasturlash, dizayn va SMM. Uchinchisi — Xavfsiz migratsiya, xorijda qonuniy o'qish va ishlash. To'rtinchisi — Psixologik ko'mak, ruhiy tahlil va mutaxassis maslahatlari. Beshinchisi — Sun'iy intellekt Hubi bilan erkin muloqot. Oltinchisi — Buyuk allomalar va jadidlar bilan jonli ovozli suhbat. Istalgan bo'limga kirish uchun uning nomini ayting yoki ekrandagi kartochkani bosing!`;
+    }
+    // 1. Rasm va rasmiy kartalar bo'yicha qat'iy javoblar bazasi (o'zicha to'qimaslik uchun)
+    else if (lowerUser.includes('til') || lowerUser.includes('ingliz') || lowerUser.includes('rus') || lowerUser.includes('nemis') || lowerUser.includes('xitoy') || lowerUser.includes('ibrat')) {
+      setActiveIndex(0);
+      directReply = "1-yo'nalish — Til o'rganish. Ibrat Farzandlari loyihasi bilan xorijiy tillarni: Ingliz, Rus, Xitoy va Nemis tillarini bepul o'rganing. Bo'limga kirish uchun 'bo'limga kir' deb ayting yoki o'rtadagi tugmani bosing.";
+    } else if (lowerUser.includes('kasb') || lowerUser.includes('dastur') || lowerUser.includes('it') || lowerUser.includes('kurs') || lowerUser.includes('ustoz') || lowerUser.includes('smm') || lowerUser.includes('grafik') || lowerUser.includes('dizayn')) {
+      setActiveIndex(1);
+      directReply = "2-yo'nalish — Zamonaviy kasb o'rganish. Ustoz AI platformasi orqali Dasturlash, Grafik dizayn, SMM va Sun'iy intellekt sohalarini egallang. Kirish uchun 'bo'limga kir' deb ayting yoki tugmani bosing.";
+    } else if (lowerUser.includes('migrats') || lowerUser.includes('viza') || lowerUser.includes('xorij') || lowerUser.includes('chet el') || lowerUser.includes('pasport') || lowerUser.includes('ish')) {
+      setActiveIndex(2);
+      directReply = "3-yo'nalish — Xavfsiz migratsiya. Xorijda qonuniy o'qish, ishlash va viza olish bo'yicha rasmiy davlat manbalaridan ma'lumot oling. Kirish uchun 'bo'limga kir' deb ayting yoki tugmani bosing.";
+    } else if (lowerUser.includes('psixolog') || lowerUser.includes('stress') || lowerUser.includes('test') || lowerUser.includes('maslahat') || lowerUser.includes('yordam') || lowerUser.includes('kayfiyat')) {
+      setActiveIndex(3);
+      directReply = "4-yo'nalish — Psixologik ko'mak. O'z his-tuyg'ularingizni tahlil qiling, ruhiy testlardan o'ting va mutaxassis tavsiyalarini oling. Muloqotimiz mutlaqo maxfiy. Kirish uchun 'bo'limga kir' deb ayting yoki tugmani bosing.";
+    } else if (lowerUser.includes('ai') || lowerUser.includes("sun'iy") || lowerUser.includes('bot') || lowerUser.includes('texnologiya') || lowerUser.includes('intellekt')) {
+      setActiveIndex(4);
+      directReply = "5-yo'nalish — Sun'iy intellekt bilan ochiq muloqot. Eng zamonaviy AI imkoniyatlari va raqamli vositalar katalogidan foydalaning. Kirish uchun 'bo'limga kir' deb ayting yoki tugmani bosing.";
+    } else if (lowerUser.includes('tarix') || lowerUser.includes('temur') || lowerUser.includes('navoiy') || lowerUser.includes('ulug') || lowerUser.includes('jadid') || lowerUser.includes('shaxs') || lowerUser.includes('behbudiy') || lowerUser.includes('avloniy') || lowerUser.includes('bobur')) {
+      setActiveIndex(5);
+      directReply = "6-yo'nalish — Buyuk ajdodlarimiz va allomalar. Amir Temur, Alisher Navoiy, Mirzo Ulug'bek va boshqa buyuk siymolar bilan jonli muloqot qiling. Kirish uchun 'bo'limga kir' deb ayting yoki tugmani bosing.";
+    }
+
+    try {
+      let reply = directReply;
+
+      // Agar savol ushbu 6 ta rasmiy yo'nalishga to'g'ri kelsa, to'g'ridan-to'g'ri aniq rasmiy javob aytiladi
+      if (!reply) {
+        const newHistory: AIMessage[] = [
+          ...conversationHistory,
+          { role: 'user', content: userText }
+        ];
+
+        const aiMessages: AIMessage[] = [
+          {
+            role: 'system',
+            content: `Sen "Muqimiy Aql Markazi" (Qo'qon Universiteti) kiosk platformasining rasmiy sun'iy intellekt yo'lboshchisi Muqimiy AIsan. Foydalanuvchi (${userName}, ${userAge} yosh) bilan bevosita jonli OVOZLI MULOQOT qilmoqdasan. Tizim, platforma va uning barcha 6 ta yo'nalishi (Til o'rganish, Kasb o'rganish, Xavfsiz migratsiya, Psixologik ko'mak, AI Hub va Tarixiy shaxslar) haqida berilgan har qanday savolga juda aniq, samimiy, dono va chiroyli tartibda javob ber. Hech qachon yulduzcha (*) yoki (**) ishlatma.`,
+          },
+          ...newHistory,
+        ];
+
+        reply = await generateAIResponse(aiMessages, user, 'general');
+      }
+
+      if (speechAbortRef.current) { setIsThinking(false); return; }
+
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', content: userText },
+        { role: 'assistant', content: reply! }
+      ]);
+      setCurrentSpeechText(reply!);
+      speakMohira(reply!, true);
     } catch {
       if (speechAbortRef.current) { setIsThinking(false); return; }
       const fallbackMsg = `Kechirasiz ${userName}, aloqada sekinlashish bo'ldi. Qaytadan gapirib ko'ring!`;
@@ -439,16 +526,11 @@ export default function MainDashboardScreen() {
     }
   };
 
-  // Initial welcome greeting from Mohira on mount
+  // Initial state on mount: Avatar stays silent until user speaks/asks a question
   useEffect(() => {
-    const greetingText = `Assalomu alaykum, ${userName}! Men Muqimiy Aql Markazi virtual yo'lboshchisi Mohiraman. Sizga qaysi yo'nalish bo'yicha yordam bera olaman: Til o'rganishmi, Kasb egallashmi, Migratsiya, Psixologiya, Tarixiy shaxslarmi yoki Sun'iy intellektmi?`;
-    setCurrentSpeechText(greetingText);
-
-    const timer = setTimeout(() => {
-      speakMohira(greetingText, false);
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [userName, speakMohira]);
+    // Toki foydalanuvchi savol bermaguncha avatar mutlaqo jim turadi
+    setCurrentSpeechText('');
+  }, []);
 
   // Load speech synthesis voices
   useEffect(() => {
@@ -601,8 +683,8 @@ export default function MainDashboardScreen() {
           <div className="lg:col-span-6 flex flex-col items-center justify-center space-y-4">
             
             {/* Grand Luxury Kiosk Avatar Display */}
-            <div className="relative w-full max-w-[560px] flex flex-col items-center justify-center">
-              <div className="w-full h-[520px] sm:h-[580px] lg:h-[640px] xl:h-[670px] relative">
+            <div className="relative w-full max-w-[440px] sm:max-w-[460px] flex flex-col items-center justify-center">
+              <div className="w-full h-[520px] sm:h-[580px] lg:h-[620px] xl:h-[650px] relative">
                 <RealisticVideoAvatar
                   state={
                     isSpeaking
@@ -616,6 +698,8 @@ export default function MainDashboardScreen() {
                   onGreetingEnd={() => setAvatarState('idle')}
                   rounded="rounded-[36px]"
                   showAura={true}
+                  fit="cover"
+                  position="center 18%"
                   className="w-full h-full"
                 />
 
@@ -624,12 +708,12 @@ export default function MainDashboardScreen() {
                   {isSpeaking && avatarState === 'greeting' ? (
                     <div className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-4 py-1.5 rounded-full flex items-center gap-2 animate-pulse shadow-md border border-emerald-300/40">
                       <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
-                      <span>Mohira sizni qutlamoqda...</span>
+                      <span>Muqimiy AI sizni qutlamoqda...</span>
                     </div>
                   ) : isSpeaking ? (
                     <div className="bg-emerald-600/95 text-white px-4 py-1.5 rounded-full flex items-center gap-2 animate-pulse shadow-md border border-emerald-400/40">
                       <Volume2 className="w-4 h-4 text-white" />
-                      <span>Mohira gapirmoqda...</span>
+                      <span>Muqimiy AI gapirmoqda...</span>
                       <span className="flex items-center gap-0.5 ml-1">
                         <span className="w-1 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                         <span className="w-1 h-4 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -644,12 +728,12 @@ export default function MainDashboardScreen() {
                   ) : isThinking ? (
                     <div className="bg-amber-600/95 text-white px-4 py-1.5 rounded-full flex items-center gap-2 shadow-md border border-amber-400/40">
                       <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      <span>Mohira javob tayyorlamoqda...</span>
+                      <span>AI Yo'lboshchi javob tayyorlamoqda...</span>
                     </div>
                   ) : (
                     <div className="bg-white/95 text-[#0F766E] px-4 py-1.5 rounded-full flex items-center gap-2 border border-[#EAE6DF] shadow-md">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="font-bold">Mohira AI • Ovozli muloqot</span>
+                      <span className="font-bold">Muqimiy AI • Ovozli muloqot</span>
                     </div>
                   )}
                 </div>
@@ -657,7 +741,7 @@ export default function MainDashboardScreen() {
             </div>
 
             {/* Direct Voice Call Action Controls (Hands-free Voice Button) */}
-            <div className="w-full max-w-[560px] flex items-center justify-center gap-3">
+            <div className="w-full max-w-[440px] sm:max-w-[460px] flex items-center justify-center gap-3">
               <button
                 onClick={toggleLiveVoiceMode}
                 className={`flex-1 py-3.5 px-6 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-md active:scale-95 ${
@@ -674,7 +758,7 @@ export default function MainDashboardScreen() {
                 ) : (
                   <>
                     <PhoneCall className="w-5 h-5 animate-bounce" />
-                    <span>🎙️ Mohira bilan ovozli gaplashish</span>
+                    <span>🎙️ AI Yo'lboshchi bilan ovozli gaplashish</span>
                   </>
                 )}
               </button>
